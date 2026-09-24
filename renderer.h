@@ -131,7 +131,7 @@ class Renderer {
 			struct Pipeline {
 				VkPipelineLayout pipelineLayout;
 				VkPipeline pipeline;
-			} graphicsPipeline;
+			} graphicsPipeline, rayTracerPipeline;
 		} instanceIF;
 
 		struct FramesConfiguration {
@@ -205,6 +205,10 @@ class Renderer {
 			return instanceIF.graphicsPipeline;
 		}
 
+		auto& getRayTracerPipeline() {
+			return instanceIF.rayTracerPipeline;
+		}
+
 		auto& getFrameIndex() {
 			return framesIF.frameIndex;
 		}
@@ -249,11 +253,31 @@ class Renderer {
 
 	struct TransitionBarriers {
 		void transitionImageUndefinedToAttachment(VkCommandBuffer &commandBuffer, VkImage &image );
+		void transitionImageUndefinedToGeneral(VkCommandBuffer& commandBuffer, VkImage& image);
 		void transitionImageAttachmentToPresent(VkCommandBuffer &commandBuffer, VkImage &image );
+		void transitionImageFromUndefinedToRead(VkCommandBuffer& commandBuffer, VkImage& image);
+		void transitionImageTransferDstToPresent(VkCommandBuffer& commandBuffer, VkImage& image);
+
+		void transitionImageFromUndefinedToGeneral(VkCommandBuffer& commandBuffer, VkImage& image);
+		void transitionImageFromGeneralToTransferSrc(VkCommandBuffer& commandBuffer, VkImage& image);
+		void transitionImageFromTransferSrcToGeneral(VkCommandBuffer& commandBuffer, VkImage& image);
 	} transitionBarriersIF;
+
+	struct FieldState {
+		VkImage image;
+		VkImageView imageView;
+		VmaAllocation allocation;
+		VkSampler sampler;
+
+		VkDescriptorImageInfo descriptor;
+	};
 
 	Slang::ComPtr< slang::IGlobalSession > slangGlobalSession;
 	Slang::ComPtr< slang::ISession > slangSession;
+
+	VkDescriptorPool descriptorPool;
+	VkDescriptorSetLayout descriptorSetLayout;
+	VkDescriptorSet descriptorSet;
 
 	void setupLibraries();
 	void setupInstance();
@@ -267,12 +291,17 @@ class Renderer {
 	void setupCommandBuffers();
 	void setupSLANG();
 	VkShaderModule loadAndCompileShaders(const char* shaderName, const char* filePath);
-	void setupPipeline();
-	void createPipeline(VkPipeline& pipeline, vector< VkPipelineShaderStageCreateInfo >& shaderStages, const vector<VkDescriptorSetLayout>& layout, VkPipelineLayout& pipelineLayout, VkFormat format);
+	void createComputePipeline(VkPipeline& pipeline, VkPipelineShaderStageCreateInfo& shaderStages, VkPipelineLayout& pipelineLayout);
 	void animate();
 	void recreateSwapchain();
 	RenderingAttachment setRenderingAttachment(VkImageView& imageView);
+	void setupDescriptorSet();
+	void updateDescriptors();
+	FieldState generateField(VkFormat imageFormat, VkFilter filtering);
 	void setup();
+	void setupPipeline();
+
+	FieldState rayTracedFrame;
 
 	public:
 		void simulate();

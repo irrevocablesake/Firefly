@@ -30,6 +30,7 @@ void Renderer::setupInstance() {
 	volkLoadInstance(windowIF.getInstanceIF().instance);
 }
 
+//should also add API version here condition, some ICDs expose only 1.2
 void Renderer::pickPhysicalDeviceAndQueue() {
 	validationIF.validateResult(vkEnumeratePhysicalDevices(windowIF.getInstanceIF().instance, &windowIF.getPhysicalDeviceIF().count, nullptr));
 
@@ -94,9 +95,19 @@ void Renderer::setupLogicalDevice() {
 		.shaderDrawParameters = VK_TRUE
 	};
 
+	VkPhysicalDeviceVulkan12Features enabledVk12Features{
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES	,
+		.pNext = &enabledVk11Features,
+		.descriptorIndexing = true,
+		.shaderSampledImageArrayNonUniformIndexing = true,
+		.descriptorBindingVariableDescriptorCount = true,
+		.runtimeDescriptorArray = true,
+		.bufferDeviceAddress = true
+	};
+
 	VkPhysicalDeviceVulkan13Features enabledVk13Features{
 		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-		.pNext = &enabledVk11Features,
+		.pNext = &enabledVk12Features,
 		.synchronization2 = true,
 		.dynamicRendering = true
 	};
@@ -149,7 +160,7 @@ void Renderer::setupSwapchain() {
 			windowIF.getSurfaceIF().surfaceCapabilites.currentExtent.height
 		},
 		.imageArrayLayers = 1,
-		.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+		.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
 		.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
 		.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
 		.presentMode = VK_PRESENT_MODE_FIFO_KHR
@@ -339,116 +350,286 @@ VkShaderModule Renderer::loadAndCompileShaders(const char* shaderName, const cha
 	return shaderModule;
 }
 
-void Renderer::createPipeline(VkPipeline& pipeline, std::vector< VkPipelineShaderStageCreateInfo >& shaderStages, const std::vector<VkDescriptorSetLayout>& layout, VkPipelineLayout& pipelineLayout, VkFormat format) {
-
-	VkPipelineVertexInputStateCreateInfo vertexInputState{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-		.vertexBindingDescriptionCount = 0,
-		.pVertexBindingDescriptions = nullptr,
-		.vertexAttributeDescriptionCount = 0,
-		.pVertexAttributeDescriptions = nullptr,
-	};
-
-	VkPipelineInputAssemblyStateCreateInfo inputAssemblyState{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-		.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
-	};
-
-	std::vector< VkDynamicState > dynamicStates{
-		VK_DYNAMIC_STATE_VIEWPORT,
-		VK_DYNAMIC_STATE_SCISSOR
-	};
-
-	VkPipelineDynamicStateCreateInfo dynamicState{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-		.dynamicStateCount = 2,
-		.pDynamicStates = dynamicStates.data()
-	};
-
-	VkPipelineViewportStateCreateInfo viewportState{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-		.viewportCount = 1,
-		.scissorCount = 1
-	};
-
-	VkPipelineDepthStencilStateCreateInfo depthStencilState{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-		.depthTestEnable = VK_FALSE,
-		.depthWriteEnable = VK_FALSE
-	};
-
-	VkPipelineRenderingCreateInfo renderingCreateInfo{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-		.colorAttachmentCount = 1,
-		.pColorAttachmentFormats = &format,
-	};
-
-	VkPipelineColorBlendAttachmentState blendAttachment{
-		.colorWriteMask = 0xF
-	};
-
-	VkPipelineColorBlendStateCreateInfo colorBlendState{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-		.attachmentCount = 1,
-		.pAttachments = &blendAttachment
-	};
-
-	VkPipelineRasterizationStateCreateInfo rasterizationState{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-		.polygonMode = VK_POLYGON_MODE_FILL,
-		.cullMode = VK_CULL_MODE_NONE,
-		.frontFace = VK_FRONT_FACE_CLOCKWISE,
-		.lineWidth = 1.0f
-	};
-
-	VkPipelineMultisampleStateCreateInfo multisampleState{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-		.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT
-	};
-
-	VkGraphicsPipelineCreateInfo pipelineCreateInfo{
-		.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-		.pNext = &renderingCreateInfo,
-		.stageCount = 2,
-		.pStages = shaderStages.data(),
-		.pVertexInputState = &vertexInputState,
-		.pInputAssemblyState = &inputAssemblyState,
-		.pViewportState = &viewportState,
-		.pRasterizationState = &rasterizationState,
-		.pMultisampleState = &multisampleState,
-		.pDepthStencilState = &depthStencilState,
-		.pColorBlendState = &colorBlendState,
-		.pDynamicState = &dynamicState,
+void Renderer::createComputePipeline( VkPipeline& pipeline, VkPipelineShaderStageCreateInfo& shaderStages, VkPipelineLayout& pipelineLayout ) {
+	VkComputePipelineCreateInfo pipelineCI{
+		.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+		.stage = shaderStages,
 		.layout = pipelineLayout
 	};
 
-	validationIF.validateResult(vkCreateGraphicsPipelines(windowIF.getLogicalDeviceIF().handle, nullptr, 1, &pipelineCreateInfo, nullptr, &pipeline));
+	vkCreateComputePipelines( windowIF.getLogicalDeviceIF().handle, nullptr, 1, &pipelineCI, nullptr, &pipeline );
 }
 
-void Renderer::setupPipeline() {
-	//GRAPHICS PIPELINE
-	VkPipelineLayoutCreateInfo graphicsPipelineLayoutCI{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO
+void Renderer::TransitionBarriers::transitionImageFromUndefinedToGeneral(VkCommandBuffer& commandBuffer, VkImage& image) {
+	VkImageMemoryBarrier2 barrierLayoutTransition{
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+			.srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+			.srcAccessMask = VK_ACCESS_2_NONE,
+			.dstStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+			.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+			.newLayout = VK_IMAGE_LAYOUT_GENERAL,
+			.image = image,
+			.subresourceRange = {
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.levelCount = 1,
+				.layerCount = 1
+			}
 	};
 
-	validationIF.validateResult(vkCreatePipelineLayout(windowIF.getLogicalDeviceIF().handle, &graphicsPipelineLayoutCI, nullptr, &windowIF.getGraphicsPipeline().pipelineLayout));
+	VkDependencyInfo barrierDependencyInfo{
+		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+		.imageMemoryBarrierCount = 1,
+		.pImageMemoryBarriers = &barrierLayoutTransition
+	};
 
-	std::vector< VkPipelineShaderStageCreateInfo > graphicsPipelineShaderStages{
-		{
-			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-			.stage = VK_SHADER_STAGE_VERTEX_BIT,
-			.module = loadAndCompileShaders("vertexShaderModule", "assets/shaders/vertexShader.slang"),
-			.pName = "main"
-		},
-		{
-			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-			.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-			.module = loadAndCompileShaders("fragmentShaderModule", "assets/shaders/fragmentShader.slang"),
-			.pName = "main"
+	vkCmdPipelineBarrier2(commandBuffer, &barrierDependencyInfo);
+}
+
+void Renderer::TransitionBarriers::transitionImageFromUndefinedToRead(VkCommandBuffer& commandBuffer, VkImage& image) {
+	VkImageMemoryBarrier2 barrierLayoutTransition{
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+			.srcStageMask = VK_PIPELINE_STAGE_2_NONE,
+			.srcAccessMask = VK_ACCESS_2_NONE,
+			.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+			.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+			.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+			.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			.image = image,
+			.subresourceRange = {
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.levelCount = 1,
+				.layerCount = 1
+			}
+	};
+
+	VkDependencyInfo barrierDependencyInfo{
+		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+		.imageMemoryBarrierCount = 1,
+		.pImageMemoryBarriers = &barrierLayoutTransition
+	};
+
+	vkCmdPipelineBarrier2(commandBuffer, &barrierDependencyInfo);
+}
+
+void Renderer::TransitionBarriers::transitionImageFromGeneralToTransferSrc(VkCommandBuffer& commandBuffer, VkImage& image) {
+	VkImageMemoryBarrier2 computeToTransfer{
+	.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+	.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+	.srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+	.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+	.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
+	.oldLayout = VK_IMAGE_LAYOUT_GENERAL,
+	.newLayout = VK_IMAGE_LAYOUT_GENERAL,
+	.image = image,
+		.subresourceRange{
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.levelCount = 1,
+			.layerCount = 1
 		}
 	};
 
-	createPipeline(windowIF.getGraphicsPipeline().pipeline, graphicsPipelineShaderStages, {}, windowIF.getGraphicsPipeline().pipelineLayout, VK_FORMAT_B8G8R8A8_SRGB);
+	VkDependencyInfo computeToTransferDependency{
+		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+		.imageMemoryBarrierCount = 1,
+		.pImageMemoryBarriers = &computeToTransfer
+	};
+
+	vkCmdPipelineBarrier2(
+		commandBuffer,
+		&computeToTransferDependency
+	);
+}
+
+void Renderer::TransitionBarriers::transitionImageFromTransferSrcToGeneral(VkCommandBuffer& commandBuffer, VkImage& image) {
+	VkImageMemoryBarrier2 computeToTransfer{
+	.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+	.srcStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT,
+	.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+	.dstStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+	.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+	.oldLayout = VK_IMAGE_LAYOUT_GENERAL,
+	.newLayout = VK_IMAGE_LAYOUT_GENERAL,
+	.image = image,
+		.subresourceRange{
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.levelCount = 1,
+			.layerCount = 1
+		}
+	};
+
+	VkDependencyInfo computeToTransferDependency{
+		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+		.imageMemoryBarrierCount = 1,
+		.pImageMemoryBarriers = &computeToTransfer
+	};
+
+	vkCmdPipelineBarrier2(
+		commandBuffer,
+		&computeToTransferDependency
+	);
+}
+
+Renderer::FieldState Renderer::generateField(VkFormat imageFormat, VkFilter filtering) {
+
+	FieldState fieldState{};
+
+	VkImageCreateInfo textureImageCreateInfo{
+		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+		.imageType = VK_IMAGE_TYPE_2D,
+		.format = imageFormat,
+		.extent{
+			.width = windowIF.getSurfaceIF().surfaceCapabilites.currentExtent.width,
+			.height = windowIF.getSurfaceIF().surfaceCapabilites.currentExtent.height,
+			.depth = 1
+		},
+		.mipLevels = 1,
+		.arrayLayers = 1,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.tiling = VK_IMAGE_TILING_OPTIMAL,
+		.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
+	};
+
+	VmaAllocationCreateInfo textureImageAllocationCreateInfo{
+		.usage = VMA_MEMORY_USAGE_AUTO
+	};
+	validationIF.validateResult(vmaCreateImage( windowIF.getInstanceIF().allocator, &textureImageCreateInfo, &textureImageAllocationCreateInfo, &fieldState.image, &fieldState.allocation, nullptr));
+	
+	VkFenceCreateInfo fenceOneTimeCreateInfo{
+			.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO
+	};
+	VkFence fenceOneTime;
+	validationIF.validateResult(vkCreateFence( windowIF.getLogicalDeviceIF().handle, &fenceOneTimeCreateInfo, nullptr, &fenceOneTime));
+
+	VkCommandBuffer commandBufferOneTime;
+	VkCommandBufferAllocateInfo commandBufferOneTimeAllocationInfo{
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+		.commandPool = windowIF.getInstanceIF().commandPool,
+		.commandBufferCount = 1
+	};
+
+	validationIF.validateResult(vkAllocateCommandBuffers( windowIF.getLogicalDeviceIF().handle, &commandBufferOneTimeAllocationInfo, &commandBufferOneTime));
+
+	VkCommandBufferBeginInfo commandBufferOneTimeBeginInfo{
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+	};
+	validationIF.validateResult(vkBeginCommandBuffer(commandBufferOneTime, &commandBufferOneTimeBeginInfo));
+
+	transitionBarriersIF.transitionImageFromUndefinedToGeneral( commandBufferOneTime, fieldState.image );
+	
+	validationIF.validateResult(vkEndCommandBuffer(commandBufferOneTime));
+
+	VkSubmitInfo oneTimeSubmitInfo{
+		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+		.commandBufferCount = 1,
+		.pCommandBuffers = &commandBufferOneTime
+	};
+
+	validationIF.validateResult(vkQueueSubmit(windowIF.getQueue().handle, 1, &oneTimeSubmitInfo, fenceOneTime));
+	validationIF.validateResult(vkWaitForFences(windowIF.getLogicalDeviceIF().handle, 1, &fenceOneTime, VK_TRUE, UINT64_MAX));
+	
+	VkImageViewCreateInfo textureImageViewCreateInfo{
+		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+		.image = fieldState.image,
+		.viewType = VK_IMAGE_VIEW_TYPE_2D,
+		.format = imageFormat,
+		.subresourceRange = {
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.levelCount = 1,
+			.layerCount = 1
+		}
+	};
+
+	validationIF.validateResult(vkCreateImageView( windowIF.getLogicalDeviceIF().handle, &textureImageViewCreateInfo, nullptr, &fieldState.imageView));
+
+	fieldState.descriptor = {
+		.sampler = VK_NULL_HANDLE,
+		.imageView = fieldState.imageView,
+		.imageLayout = VK_IMAGE_LAYOUT_GENERAL
+	};
+
+	return fieldState;
+}
+
+void Renderer::setupDescriptorSet() {
+	VkDescriptorPoolSize poolSize{
+			.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+			.descriptorCount = 1
+	};
+
+	VkDescriptorPoolCreateInfo descriptorPoolCreateInfo{
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+		.maxSets = 1,
+		.poolSizeCount = 1,
+		.pPoolSizes = &poolSize
+	};
+
+	validationIF.validateResult(vkCreateDescriptorPool( windowIF.getLogicalDeviceIF().handle, &descriptorPoolCreateInfo, nullptr, &descriptorPool));
+	
+	VkDescriptorSetLayoutBinding descriptorSetLayoutBinding{
+		.binding = 0,
+		.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+		.descriptorCount = 1,
+		.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT
+	};
+
+	VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+		.bindingCount = 1,
+		.pBindings = &descriptorSetLayoutBinding
+	};
+
+	vkCreateDescriptorSetLayout( windowIF.getLogicalDeviceIF().handle, &descriptorSetLayoutCI, nullptr, &descriptorSetLayout );
+	
+	VkDescriptorSetAllocateInfo descriptorAllocateInfo{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+			.descriptorPool = descriptorPool,
+			.descriptorSetCount = 1,
+			.pSetLayouts = &descriptorSetLayout
+	};
+
+	validationIF.validateResult(vkAllocateDescriptorSets( windowIF.getLogicalDeviceIF().handle, &descriptorAllocateInfo, &descriptorSet));
+}
+
+void Renderer::updateDescriptors() {
+		 rayTracedFrame = generateField(VK_FORMAT_R8G8B8A8_UNORM, VK_FILTER_LINEAR);
+
+		VkWriteDescriptorSet imageSet = {
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstSet = descriptorSet,
+			.dstBinding = 0,
+			.descriptorCount = 1,
+			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+			.pImageInfo = &rayTracedFrame.descriptor
+		};
+	
+
+	vkUpdateDescriptorSets(windowIF.getLogicalDeviceIF().handle, 1, &imageSet, 0, nullptr);
+}
+
+void Renderer::setupPipeline() {
+	setupDescriptorSet();
+	updateDescriptors();
+
+	//COMPUTE PIPELINE
+	VkPipelineLayoutCreateInfo rayTracerLayoutCI{
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+		.setLayoutCount = 1,
+		.pSetLayouts = &descriptorSetLayout
+	};
+
+	validationIF.validateResult(vkCreatePipelineLayout(windowIF.getLogicalDeviceIF().handle, &rayTracerLayoutCI, nullptr, &windowIF.getRayTracerPipeline().pipelineLayout));
+
+	VkPipelineShaderStageCreateInfo rayTracerShaderStage{
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+		.module = loadAndCompileShaders("rayTracerShaderModule", "assets/shaders/rayTracerShader.slang"),
+		.pName = "main"
+	};
+
+	createComputePipeline(windowIF.getRayTracerPipeline().pipeline, rayTracerShaderStage, windowIF.getRayTracerPipeline().pipelineLayout);
 }
 
 Renderer::RenderingAttachment Renderer::setRenderingAttachment(VkImageView& imageView) {
@@ -538,17 +719,75 @@ void Renderer::animate() {
 		};
 		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-		transitionBarriersIF.transitionImageUndefinedToAttachment(commandBuffer, windowIF.getSwapchain().images[windowIF.getImageIndex()]);
-		RenderingAttachment renderingAttachment = setRenderingAttachment(windowIF.getSwapchain().imageViews[windowIF.getImageIndex()]);
-		vkCmdBeginRendering(commandBuffer, &renderingAttachment.renderingInfo);
-		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, windowIF.getInstanceIF().graphicsPipeline.pipeline);
-		vkCmdDraw(commandBuffer, 3, 1, 0, 0);
-		vkCmdEndRendering(commandBuffer);
-		transitionBarriersIF.transitionImageAttachmentToPresent(commandBuffer, windowIF.getSwapchain().images[windowIF.getImageIndex()]);
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, windowIF.getRayTracerPipeline().pipeline );
+		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, windowIF.getRayTracerPipeline().pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
+		vkCmdDispatch(commandBuffer, ( windowIF.getSurfaceIF().surfaceCapabilites.currentExtent.width + 7) / 8, (windowIF.getSurfaceIF().surfaceCapabilites.currentExtent.height + 7) / 8, 1);
+
+		transitionBarriersIF.transitionImageFromGeneralToTransferSrc( commandBuffer, rayTracedFrame.image );
+
+		VkImageMemoryBarrier2 swapchainBarrier{
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+			.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+			.srcAccessMask = VK_ACCESS_2_NONE,
+			.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+			.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+			.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+			.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			.image = windowIF.getSwapchain().images[ windowIF.getImageIndex() ],
+			.subresourceRange{
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.levelCount = 1,
+				.layerCount = 1
+			}
+		};
+
+		VkDependencyInfo swapchainDependency{
+			.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+			.imageMemoryBarrierCount = 1,
+			.pImageMemoryBarriers = &swapchainBarrier
+		};
+
+		vkCmdPipelineBarrier2(commandBuffer, &swapchainDependency);
+
+		VkImageCopy copyRegion{
+			.srcSubresource{
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.layerCount = 1
+			},
+			.dstSubresource{
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.layerCount = 1
+			},
+			.extent{
+				.width = windowIF.getSurfaceIF().surfaceCapabilites.currentExtent.width,
+				.height = windowIF.getSurfaceIF().surfaceCapabilites.currentExtent.height,
+				.depth = 1
+			}
+		};
+
+		vkCmdCopyImage(
+			commandBuffer,
+			rayTracedFrame.image,
+			VK_IMAGE_LAYOUT_GENERAL,
+			windowIF.getSwapchain().images[ windowIF.getImageIndex() ],
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			1,
+			&copyRegion
+		);
+
+		transitionBarriersIF.transitionImageTransferDstToPresent(
+			commandBuffer,
+			windowIF.getSwapchain().images[windowIF.getImageIndex()]
+		);
+
+		transitionBarriersIF.transitionImageFromTransferSrcToGeneral(
+			commandBuffer,
+			rayTracedFrame.image
+		);
 
 		vkEndCommandBuffer(commandBuffer);
 
-		VkPipelineStageFlags waitStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		VkPipelineStageFlags waitStages = VK_PIPELINE_STAGE_TRANSFER_BIT;
 		VkSubmitInfo submitInfo{
 			.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
 			.waitSemaphoreCount = 1,
@@ -579,6 +818,35 @@ void Renderer::animate() {
 
 		//SDL_Delay(100);
 	}
+}
+
+void Renderer::TransitionBarriers::transitionImageTransferDstToPresent(
+	VkCommandBuffer& commandBuffer,
+	VkImage& image)
+{
+	VkImageMemoryBarrier2 barrier{
+		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+		.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+		.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_2_NONE,
+		.dstAccessMask = VK_ACCESS_2_NONE,
+		.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+		.image = image,
+		.subresourceRange{
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.levelCount = 1,
+			.layerCount = 1
+		}
+	};
+
+	VkDependencyInfo dependency{
+		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+		.imageMemoryBarrierCount = 1,
+		.pImageMemoryBarriers = &barrier
+	};
+
+	vkCmdPipelineBarrier2(commandBuffer, &dependency);
 }
 
 void Renderer::recreateSwapchain() {
@@ -654,6 +922,34 @@ void Renderer::TransitionBarriers::transitionImageAttachmentToPresent(VkCommandB
 	vkCmdPipelineBarrier2(commandBuffer, &barrierPresentDependencyInfo);
 }
 
+void Renderer::TransitionBarriers::transitionImageUndefinedToGeneral(
+	VkCommandBuffer& commandBuffer,
+	VkImage& image)
+{
+	VkImageMemoryBarrier2 barrier{
+		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+		.srcStageMask = VK_PIPELINE_STAGE_2_NONE,
+		.srcAccessMask = VK_ACCESS_2_NONE,
+		.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+		.dstAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT,
+		.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.newLayout = VK_IMAGE_LAYOUT_GENERAL,
+		.image = image,
+		.subresourceRange{
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.levelCount = 1,
+			.layerCount = 1
+		}
+	};
+
+	VkDependencyInfo dependency{
+		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+		.imageMemoryBarrierCount = 1,
+		.pImageMemoryBarriers = &barrier
+	};
+
+	vkCmdPipelineBarrier2(commandBuffer, &dependency);
+}
 
 void Renderer::simulate() {
 	setup();
