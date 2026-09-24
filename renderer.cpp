@@ -1,4 +1,3 @@
-
 #define VOLK_IMPLEMENTATION
 #include<volk/volk.h>
 
@@ -73,9 +72,9 @@ void Renderer::pickPhysicalDeviceAndQueue() {
 				break;
 			}
 
-			if (found) {
-				break;
-			}
+		}
+		if (found) {
+			break;
 		}
 	}
 
@@ -543,7 +542,7 @@ void Renderer::animate() {
 		RenderingAttachment renderingAttachment = setRenderingAttachment(windowIF.getSwapchain().imageViews[windowIF.getImageIndex()]);
 		vkCmdBeginRendering(commandBuffer, &renderingAttachment.renderingInfo);
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, windowIF.getInstanceIF().graphicsPipeline.pipeline);
-		vkCmdDrawIndexed(commandBuffer, 3, 1, 0, 0, 0);
+		vkCmdDraw(commandBuffer, 3, 1, 0, 0);
 		vkCmdEndRendering(commandBuffer);
 		transitionBarriersIF.transitionImageAttachmentToPresent(commandBuffer, windowIF.getSwapchain().images[windowIF.getImageIndex()]);
 
@@ -610,10 +609,6 @@ void Renderer::recreateSwapchain() {
 }
 
 void Renderer::TransitionBarriers::transitionImageUndefinedToAttachment(VkCommandBuffer& commandBuffer, VkImage& image) {
-	assert(vkCmdPipelineBarrier2 != nullptr);
-	assert(vkCmdBeginRendering != nullptr);
-	assert(vkCmdEndRendering != nullptr);
-
 	VkImageMemoryBarrier2 outputBarrier{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
 		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -640,10 +635,6 @@ void Renderer::TransitionBarriers::transitionImageUndefinedToAttachment(VkComman
 }
 
 void Renderer::TransitionBarriers::transitionImageAttachmentToPresent(VkCommandBuffer& commandBuffer, VkImage& image) {
-	assert(vkCmdPipelineBarrier2 != nullptr);
-	assert(vkCmdBeginRendering != nullptr);
-	assert(vkCmdEndRendering != nullptr);
-
 	VkImageMemoryBarrier2 barrierPresent{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
 		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,

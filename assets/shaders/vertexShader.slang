@@ -7,9 +7,9 @@ struct VSOutput
 VSOutput main(uint vertexID : SV_VertexID)
 {
     float2 positions[3] = {
-        float2(-1.0, -1.0),
-        float2( 3.0, -1.0),
-        float2(-1.0,  3.0)
+        float2(-0.5, 0.5),
+        float2( 0.0, -0.5),
+        float2( 0.5, 0.5)
     };
 
     VSOutput output;

@@ -33,7 +33,7 @@ class Renderer {
 
 		struct windowConfiguration {
 			SDL_Window *window;
-			std::string windowName{ "Path Tracer" };
+			string windowName{ "Path Tracer" };
 			int windowWidth{ 400u };
 			int windowHeight{ 400u };
 			SDL_WindowFlags windowFlags{
@@ -42,13 +42,13 @@ class Renderer {
 
 			glm::ivec2 windowSize{};
 
-			VkClearColorValue clearColor{ 1.0f, 0.0f, 0.0f, 1.0f };
+			VkClearColorValue clearColor{ 0.0f, 0.0f, 0.0f, 1.0f };
 		} windowConfiguration;
 
 		struct DepthAttachmentIF {
 			VkImageCreateInfo imageCI;
 
-			std::vector< VkFormat > formatList{
+			vector< VkFormat > formatList{
 				VK_FORMAT_D32_SFLOAT_S8_UINT,
 				VK_FORMAT_D24_UNORM_S8_UINT
 			};
@@ -76,7 +76,7 @@ class Renderer {
 				} instanceIF;
 
 				struct Device {
-					const std::vector< const char* > extensions{
+					const vector< const char* > extensions{
 						VK_KHR_SWAPCHAIN_EXTENSION_NAME
 					};
 				} deviceIF;
@@ -137,9 +137,9 @@ class Renderer {
 		struct FramesConfiguration {
 			static constexpr uint32_t maxFramesInFlight{ 2 };
 
-			std::array< VkFence, maxFramesInFlight > fences;
-			std::array< VkSemaphore, maxFramesInFlight > presentSemaphores;
-			std::array< VkCommandBuffer, maxFramesInFlight > commandBuffers{};
+			array< VkFence, maxFramesInFlight > fences;
+			array< VkSemaphore, maxFramesInFlight > presentSemaphores;
+			array< VkCommandBuffer, maxFramesInFlight > commandBuffers{};
 
 			int frameIndex{ 0 };
 		} framesIF;
@@ -241,7 +241,7 @@ class Renderer {
 					return;
 				}
 
-				std::cerr << "ERROR: Swapchain Validation Failed" << std::endl;
+				cerr << "ERROR: Swapchain Validation Failed" << endl;
 				exit(result);
 			}
 		}
@@ -268,7 +268,7 @@ class Renderer {
 	void setupSLANG();
 	VkShaderModule loadAndCompileShaders(const char* shaderName, const char* filePath);
 	void setupPipeline();
-	void createPipeline(VkPipeline& pipeline, std::vector< VkPipelineShaderStageCreateInfo >& shaderStages, const std::vector<VkDescriptorSetLayout>& layout, VkPipelineLayout& pipelineLayout, VkFormat format);
+	void createPipeline(VkPipeline& pipeline, vector< VkPipelineShaderStageCreateInfo >& shaderStages, const vector<VkDescriptorSetLayout>& layout, VkPipelineLayout& pipelineLayout, VkFormat format);
 	void animate();
 	void recreateSwapchain();
 	RenderingAttachment setRenderingAttachment(VkImageView& imageView);
