@@ -7,17 +7,20 @@
 #include<glm/glm.hpp>
 #include<vma/vk_mem_alloc.h>
 
-#include "slang/slang.h"
-#include "slang/slang-com-ptr.h"
-
 #include<iostream>
 #include<cstdlib>
 #include<array>
 #include<vector>
 
+#include "barriers.h"
+#include "shaders.h"
+
 using namespace std;
 
 class Renderer {
+	struct PushConstants {
+		VkDeviceAddress uniformBufferBDA;
+	} pushConstants;
 
 	struct WindowIF {
 		VkApplicationInfo applicationInfo{
@@ -134,12 +137,27 @@ class Renderer {
 			} graphicsPipeline, rayTracerPipeline;
 		} instanceIF;
 
+		struct UniformData {
+			float aspectRatio = 1.0;
+		} uniformData;
+
+		struct UniformDataHandle {
+			VkBuffer buffer{ VK_NULL_HANDLE };
+
+			VmaAllocation allocation{ VK_NULL_HANDLE };
+			VmaAllocationInfo allocationInfo{};
+
+			VkDeviceAddress deviceAddress{};
+			void* mapped{ nullptr };
+		} uniformDataHandle;
+
 		struct FramesConfiguration {
 			static constexpr uint32_t maxFramesInFlight{ 2 };
 
 			array< VkFence, maxFramesInFlight > fences;
 			array< VkSemaphore, maxFramesInFlight > presentSemaphores;
 			array< VkCommandBuffer, maxFramesInFlight > commandBuffers{};
+			array< UniformDataHandle, maxFramesInFlight > uniformData;
 
 			int frameIndex{ 0 };
 		} framesIF;
@@ -151,6 +169,10 @@ class Renderer {
 
 		auto& getPhysicalDeviceIF() {
 			return instanceIF.deviceIF.physicalIF;
+		}
+
+		auto& getUniformData() {
+			return uniformData;
 		}
 
 		auto& getLogicalDeviceIF() {
@@ -218,47 +240,6 @@ class Renderer {
 		}
 	} windowIF;
 
-	struct RenderingAttachment {
-		VkRenderingAttachmentInfo attachmentInfo;
-		VkRenderingInfo renderingInfo;
-	};
-
-	struct ValidationHelpers {
-		void validateResult(VkResult result, string message = "ERROR") {
-			if (result != VK_SUCCESS) {
-				cerr << "ERROR: " << message << endl;
-				exit(result);
-			}
-		}
-
-		void validateResult(bool result, string message = "ERROR") {
-			if (!result) {
-				cerr << "ERROR: " << message << endl;
-				exit(result);
-			}
-		}
-
-		void validateSwapchain(VkResult result, bool &value) {
-			if (result < VK_SUCCESS) {
-				if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-					value = true;
-					return;
-				}
-
-				cerr << "ERROR: Swapchain Validation Failed" << endl;
-				exit(result);
-			}
-		}
-	} validationIF;
-
-	struct TransitionBarriers {
-		void transitionImageFromUndefinedToGeneral(VkCommandBuffer& commandBuffer, VkImage& image);
-		void transitionImageFromGeneralToTransferSrc(VkCommandBuffer& commandBuffer, VkImage& image);
-		void transitionImageFromTransferSrcToGeneral(VkCommandBuffer& commandBuffer, VkImage& image);
-		void transitionImageTransferDstToPresent(VkCommandBuffer& commandBuffer, VkImage& image);
-		void transitionImageFromUndefinedToTransferDst(VkCommandBuffer& commandBuffer, VkImage& image);
-	} transitionBarriersIF;
-
 	struct FieldState {
 		VkImage image;
 		VkImageView imageView;
@@ -268,37 +249,49 @@ class Renderer {
 		VkDescriptorImageInfo descriptor;
 	};
 
-	Slang::ComPtr< slang::IGlobalSession > slangGlobalSession;
-	Slang::ComPtr< slang::ISession > slangSession;
-
 	VkDescriptorPool descriptorPool;
 	VkDescriptorSetLayout descriptorSetLayout;
 	VkDescriptorSet descriptorSet;
 
 	void setupLibraries();
+	
 	void setupInstance();
+	
 	void pickPhysicalDeviceAndQueue();
+	
 	void setupLogicalDevice();
+	
 	void setupSynchronization();
-	void setupSwapchain();
+	
 	void setupUI();
+	
 	void setupDepthAttachment();
+	
 	void setupVMA();
+	
 	void setupCommandBuffers();
-	void setupSLANG();
-	VkShaderModule loadAndCompileShaders(const char* shaderName, const char* filePath);
-	void createComputePipeline(VkPipeline& pipeline, VkPipelineShaderStageCreateInfo& shaderStages, VkPipelineLayout& pipelineLayout);
-	void animate();
-	void recreateSwapchain();
-	RenderingAttachment setRenderingAttachment(VkImageView& imageView);
+	
 	void setupDescriptorSet();
 	void updateDescriptors();
-	FieldState generateField(VkFormat imageFormat, VkFilter filtering);
-	void setup();
+	
+	void setupSwapchain();
+	void recreateSwapchain();
+
+	void createComputePipeline(VkPipeline& pipeline, VkPipelineShaderStageCreateInfo& shaderStages, VkPipelineLayout& pipelineLayout);
 	void setupPipeline();
 
+	void setupUniformBuffer();
+
+	void animate();
+	
+	void setup();
+
+	FieldState generateField(VkFormat imageFormat, VkFilter filtering);
 	FieldState rayTracedFrame;
 
+	Barriers barrier;
+	Shaders shaderIF;
+	
 	public:
 		void simulate();
 };

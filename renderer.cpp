@@ -8,6 +8,7 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include<glm/glm.hpp>
 
+#include "validation.h"
 #include "renderer.h"
 
 void Renderer::setupLibraries() {
@@ -292,64 +293,6 @@ void Renderer::setupCommandBuffers() {
 	validationIF.validateResult(vkAllocateCommandBuffers(windowIF.getLogicalDeviceIF().handle, &commandBufferAllocateCreateInfo, windowIF.getFramesIF().commandBuffers.data()));
 }
 
-void Renderer::setupSLANG() {
-	slang::createGlobalSession(slangGlobalSession.writeRef());
-
-	auto slangTargets{
-		std::to_array< slang::TargetDesc >({{
-			.format{SLANG_SPIRV},
-			.profile{slangGlobalSession->findProfile("spirv_1_4")}
-		}})
-	};
-
-	auto slangOptions{
-		std::to_array < slang::CompilerOptionEntry>({{
-			slang::CompilerOptionName::EmitSpirvDirectly,
-			{
-				slang::CompilerOptionValueKind::Int, 1
-			}
-		}})
-	};
-
-	slang::SessionDesc slangSessionDesc{
-		.targets{
-			slangTargets.data()
-		},
-		.targetCount{
-			SlangInt(slangTargets.size())
-		},
-		.defaultMatrixLayoutMode = SLANG_MATRIX_LAYOUT_COLUMN_MAJOR,
-		.compilerOptionEntries{
-			slangOptions.data()
-		},
-		.compilerOptionEntryCount{
-			uint32_t(slangOptions.size())
-		}
-	};
-
-	slangGlobalSession->createSession(slangSessionDesc, slangSession.writeRef());
-}
-
-VkShaderModule Renderer::loadAndCompileShaders(const char* shaderName, const char* filePath) {
-	Slang::ComPtr< slang::IModule > slangModule{
-		slangSession->loadModuleFromSource(shaderName, filePath, nullptr, nullptr)
-	};
-
-	Slang::ComPtr< ISlangBlob > spirv;
-	slangModule->getTargetCode(0, spirv.writeRef());
-
-	VkShaderModuleCreateInfo shaderModuleCreateInfo{
-		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-		.codeSize = spirv->getBufferSize(),
-		.pCode = (uint32_t*)spirv->getBufferPointer()
-	};
-
-	VkShaderModule shaderModule{};
-	validationIF.validateResult(vkCreateShaderModule(windowIF.getLogicalDeviceIF().handle, &shaderModuleCreateInfo, nullptr, &shaderModule));
-
-	return shaderModule;
-}
-
 void Renderer::createComputePipeline( VkPipeline& pipeline, VkPipelineShaderStageCreateInfo& shaderStages, VkPipelineLayout& pipelineLayout ) {
 	VkComputePipelineCreateInfo pipelineCI{
 		.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
@@ -358,90 +301,6 @@ void Renderer::createComputePipeline( VkPipeline& pipeline, VkPipelineShaderStag
 	};
 
 	vkCreateComputePipelines( windowIF.getLogicalDeviceIF().handle, nullptr, 1, &pipelineCI, nullptr, &pipeline );
-}
-
-void Renderer::TransitionBarriers::transitionImageFromUndefinedToGeneral(VkCommandBuffer& commandBuffer, VkImage& image) {
-	VkImageMemoryBarrier2 barrierLayoutTransition{
-			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-			.srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-			.srcAccessMask = VK_ACCESS_2_NONE,
-			.dstStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-			.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
-			.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-			.newLayout = VK_IMAGE_LAYOUT_GENERAL,
-			.image = image,
-			.subresourceRange = {
-				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-				.levelCount = 1,
-				.layerCount = 1
-			}
-	};
-
-	VkDependencyInfo barrierDependencyInfo{
-		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-		.imageMemoryBarrierCount = 1,
-		.pImageMemoryBarriers = &barrierLayoutTransition
-	};
-
-	vkCmdPipelineBarrier2(commandBuffer, &barrierDependencyInfo);
-}
-
-void Renderer::TransitionBarriers::transitionImageFromGeneralToTransferSrc(VkCommandBuffer& commandBuffer, VkImage& image) {
-	VkImageMemoryBarrier2 computeToTransfer{
-	.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-	.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-	.srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-	.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
-	.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
-	.oldLayout = VK_IMAGE_LAYOUT_GENERAL,
-	.newLayout = VK_IMAGE_LAYOUT_GENERAL,
-	.image = image,
-		.subresourceRange{
-			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-			.levelCount = 1,
-			.layerCount = 1
-		}
-	};
-
-	VkDependencyInfo computeToTransferDependency{
-		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-		.imageMemoryBarrierCount = 1,
-		.pImageMemoryBarriers = &computeToTransfer
-	};
-
-	vkCmdPipelineBarrier2(
-		commandBuffer,
-		&computeToTransferDependency
-	);
-}
-
-void Renderer::TransitionBarriers::transitionImageFromTransferSrcToGeneral(VkCommandBuffer& commandBuffer, VkImage& image) {
-	VkImageMemoryBarrier2 computeToTransfer{
-	.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-	.srcStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT,
-	.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-	.dstStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-	.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
-	.oldLayout = VK_IMAGE_LAYOUT_GENERAL,
-	.newLayout = VK_IMAGE_LAYOUT_GENERAL,
-	.image = image,
-		.subresourceRange{
-			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-			.levelCount = 1,
-			.layerCount = 1
-		}
-	};
-
-	VkDependencyInfo computeToTransferDependency{
-		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-		.imageMemoryBarrierCount = 1,
-		.pImageMemoryBarriers = &computeToTransfer
-	};
-
-	vkCmdPipelineBarrier2(
-		commandBuffer,
-		&computeToTransferDependency
-	);
 }
 
 Renderer::FieldState Renderer::generateField(VkFormat imageFormat, VkFilter filtering) {
@@ -453,8 +312,8 @@ Renderer::FieldState Renderer::generateField(VkFormat imageFormat, VkFilter filt
 		.imageType = VK_IMAGE_TYPE_2D,
 		.format = imageFormat,
 		.extent{
-			.width = windowIF.getSurfaceIF().surfaceCapabilites.currentExtent.width,
-			.height = windowIF.getSurfaceIF().surfaceCapabilites.currentExtent.height,
+			.width = static_cast< uint32_t >( windowIF.getWindowConfiguration().windowSize.x ),
+			.height = static_cast< uint32_t >(windowIF.getWindowConfiguration().windowSize.y ),
 			.depth = 1
 		},
 		.mipLevels = 1,
@@ -491,7 +350,7 @@ Renderer::FieldState Renderer::generateField(VkFormat imageFormat, VkFilter filt
 	};
 	validationIF.validateResult(vkBeginCommandBuffer(commandBufferOneTime, &commandBufferOneTimeBeginInfo));
 
-	transitionBarriersIF.transitionImageFromUndefinedToGeneral( commandBufferOneTime, fieldState.image );
+	barrier.transitionImageFromUndefinedToGeneral( commandBufferOneTime, fieldState.image );
 	
 	validationIF.validateResult(vkEndCommandBuffer(commandBufferOneTime));
 
@@ -588,10 +447,18 @@ void Renderer::setupPipeline() {
 	updateDescriptors();
 
 	//COMPUTE PIPELINE
+	VkPushConstantRange generalPushConstant{
+		.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+		.offset = 0,
+		.size = sizeof( PushConstants )
+	};
+
 	VkPipelineLayoutCreateInfo rayTracerLayoutCI{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
 		.setLayoutCount = 1,
-		.pSetLayouts = &descriptorSetLayout
+		.pSetLayouts = &descriptorSetLayout,
+		.pushConstantRangeCount = 1,
+		.pPushConstantRanges = &generalPushConstant
 	};
 
 	validationIF.validateResult(vkCreatePipelineLayout(windowIF.getLogicalDeviceIF().handle, &rayTracerLayoutCI, nullptr, &windowIF.getRayTracerPipeline().pipelineLayout));
@@ -599,7 +466,7 @@ void Renderer::setupPipeline() {
 	VkPipelineShaderStageCreateInfo rayTracerShaderStage{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.module = loadAndCompileShaders("rayTracerShaderModule", "assets/shaders/rayTracerShader.slang"),
+		.module = shaderIF.loadAndCompileShaders(windowIF.getLogicalDeviceIF().handle, "rayTracerShaderModule", "assets/shaders/rayTracerShader.slang"),
 		.pName = "main"
 	};
 
@@ -646,6 +513,9 @@ void Renderer::animate() {
 			.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
 		};
 
+		//later update the uniform data
+		memcpy( windowIF.getFramesIF().uniformData[windowIF.getFrameIndex()].allocationInfo.pMappedData, &windowIF.uniformData, sizeof(Renderer::WindowIF::UniformData));
+
 		validationIF.validateResult(vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo));
 
 		VkViewport viewport{
@@ -664,12 +534,14 @@ void Renderer::animate() {
 		};
 		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
+		pushConstants.uniformBufferBDA = windowIF.getFramesIF().uniformData[windowIF.getFrameIndex()].deviceAddress;
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, windowIF.getRayTracerPipeline().pipeline );
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, windowIF.getRayTracerPipeline().pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
-		vkCmdDispatch(commandBuffer, ( windowIF.getSurfaceIF().surfaceCapabilites.currentExtent.width + 7) / 8, (windowIF.getSurfaceIF().surfaceCapabilites.currentExtent.height + 7) / 8, 1);
+		vkCmdPushConstants( commandBuffer, windowIF.getRayTracerPipeline().pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof( PushConstants ), &pushConstants);
+		vkCmdDispatch(commandBuffer, (windowIF.getWindowConfiguration().windowSize.x + 7) / 8, (windowIF.getWindowConfiguration().windowSize.y + 7) / 8, 1);
 
-		transitionBarriersIF.transitionImageFromGeneralToTransferSrc( commandBuffer, rayTracedFrame.image );
-		transitionBarriersIF.transitionImageFromUndefinedToTransferDst(commandBuffer, windowIF.getSwapchain().images[ windowIF.getImageIndex()]);
+		barrier.transitionImageFromGeneralToTransferSrc( commandBuffer, rayTracedFrame.image );
+		barrier.transitionImageFromUndefinedToTransferDst(commandBuffer, windowIF.getSwapchain().images[ windowIF.getImageIndex()]);
 
 		VkImageCopy copyRegion{
 			.srcSubresource{
@@ -697,8 +569,8 @@ void Renderer::animate() {
 			&copyRegion
 		);
 
-		transitionBarriersIF.transitionImageTransferDstToPresent( commandBuffer, windowIF.getSwapchain().images[windowIF.getImageIndex()] );
-		transitionBarriersIF.transitionImageFromTransferSrcToGeneral( commandBuffer, rayTracedFrame.image );
+		barrier.transitionImageTransferDstToPresent( commandBuffer, windowIF.getSwapchain().images[windowIF.getImageIndex()] );
+		barrier.transitionImageFromTransferSrcToGeneral( commandBuffer, rayTracedFrame.image );
 
 		vkEndCommandBuffer(commandBuffer);
 
@@ -735,61 +607,6 @@ void Renderer::animate() {
 	}
 }
 
-void Renderer::TransitionBarriers::transitionImageTransferDstToPresent(
-	VkCommandBuffer& commandBuffer,
-	VkImage& image)
-{
-	VkImageMemoryBarrier2 barrier{
-		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-		.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-		.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-		.dstStageMask = VK_PIPELINE_STAGE_2_NONE,
-		.dstAccessMask = VK_ACCESS_2_NONE,
-		.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-		.image = image,
-		.subresourceRange{
-			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-			.levelCount = 1,
-			.layerCount = 1
-		}
-	};
-
-	VkDependencyInfo dependency{
-		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-		.imageMemoryBarrierCount = 1,
-		.pImageMemoryBarriers = &barrier
-	};
-
-	vkCmdPipelineBarrier2(commandBuffer, &dependency);
-}
-
-void Renderer::TransitionBarriers::transitionImageFromUndefinedToTransferDst(VkCommandBuffer& commandBuffer, VkImage& image) {
-	VkImageMemoryBarrier2 barrier{
-	.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-	.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
-	.srcAccessMask = VK_ACCESS_2_NONE,
-	.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
-	.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-	.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-	.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-	.image = image,
-	.subresourceRange{
-		.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-		.levelCount = 1,
-		.layerCount = 1
-	}
-	};
-
-	VkDependencyInfo dependency{
-		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-		.imageMemoryBarrierCount = 1,
-		.pImageMemoryBarriers = &barrier
-	};
-
-	vkCmdPipelineBarrier2(commandBuffer, &dependency);
-}
-
 void Renderer::recreateSwapchain() {
 	windowIF.getSwapchain().updateSwapchain = false;
 	vkDeviceWaitIdle(windowIF.getLogicalDeviceIF().handle);
@@ -822,6 +639,30 @@ void Renderer::simulate() {
 	animate();
 }
 
+void Renderer::setupUniformBuffer() {
+	for (uint32_t index = 0; index < windowIF.getFramesIF().maxFramesInFlight; index++) {
+		VkBufferCreateInfo uniformBufferCreateInfo{
+			.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+			.size = sizeof(Renderer::WindowIF::UniformData),
+			.usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
+		};
+
+		VmaAllocationCreateInfo uniformBufferAllocationCreateInfo{
+			.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
+			.usage = VMA_MEMORY_USAGE_AUTO
+		};
+
+		validationIF.validateResult(vmaCreateBuffer( windowIF.getInstanceIF().allocator, &uniformBufferCreateInfo, &uniformBufferAllocationCreateInfo, &windowIF.getFramesIF().uniformData[ index ].buffer, &windowIF.getFramesIF().uniformData[index].allocation, &windowIF.getFramesIF().uniformData[index].allocationInfo));
+
+		VkBufferDeviceAddressInfo uniformBDAInfo{
+			.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+			.buffer = windowIF.getFramesIF().uniformData[index].buffer
+		};
+
+		windowIF.getFramesIF().uniformData[index].deviceAddress = vkGetBufferDeviceAddress(windowIF.getLogicalDeviceIF().handle, &uniformBDAInfo);
+	}
+}
+
 void Renderer::setup() {
 	setupLibraries();
 	setupInstance();
@@ -833,6 +674,7 @@ void Renderer::setup() {
 	setupSynchronization();
 	setupDepthAttachment();
 	setupCommandBuffers();
-	setupSLANG();
+	shaderIF.setupSLANG();
 	setupPipeline();
+	setupUniformBuffer();
 }
