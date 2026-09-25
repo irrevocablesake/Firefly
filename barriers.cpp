@@ -136,3 +136,41 @@ void Barriers::transitionImageFromUndefinedToTransferDst(VkCommandBuffer& comman
 
 	vkCmdPipelineBarrier2(commandBuffer, &dependency);
 }
+
+VkCommandBuffer Barriers::beginOneTimeCommand( VkDevice &device, VkCommandPool &commandPool ) {
+	VkFenceCreateInfo fenceOneTimeCreateInfo{
+		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO
+	};
+	
+	vkCreateFence( device, &fenceOneTimeCreateInfo, nullptr, &fenceOneTime);
+
+	VkCommandBuffer commandBufferOneTime;
+	VkCommandBufferAllocateInfo commandBufferOneTimeAllocationInfo{
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+		.commandPool = commandPool,
+		.commandBufferCount = 1
+	};
+
+	vkAllocateCommandBuffers( device, &commandBufferOneTimeAllocationInfo, &commandBufferOneTime);
+
+	VkCommandBufferBeginInfo commandBufferOneTimeBeginInfo{
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+	};
+	vkBeginCommandBuffer(commandBufferOneTime, &commandBufferOneTimeBeginInfo);
+
+	return commandBufferOneTime;
+}
+
+void Barriers::endOneTimeCommand( VkDevice device, VkCommandBuffer &commandBuffer, VkQueue queue ) {
+	vkEndCommandBuffer(commandBuffer);
+
+	VkSubmitInfo oneTimeSubmitInfo{
+		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+		.commandBufferCount = 1,
+		.pCommandBuffers = &commandBuffer
+	};
+
+	vkQueueSubmit( queue, 1, &oneTimeSubmitInfo, fenceOneTime);
+	vkWaitForFences( device, 1, &fenceOneTime, VK_TRUE, UINT64_MAX);
+}

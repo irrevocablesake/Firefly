@@ -2,7 +2,7 @@
 
 #include<cstring>
 
-void ResourceManager::copyDataIntoBuffer(void* destination, void* source, size_t size) {
+void ResourceManager::copyDataIntoBuffer(void* destination, const void* source, size_t size) {
 	memcpy(destination, source, size);
 }
 
@@ -27,4 +27,50 @@ void ResourceManager::setupBuffer(VkDevice& device, VmaAllocator& allocator, Buf
 	};
 
 	handle.deviceAddress = vkGetBufferDeviceAddress(device, &uniformBDAInfo);
+}
+
+void ResourceManager::generateTexture(VkDevice& device, VmaAllocator& allocator, VkCommandPool& commandPool, TextureHandle& handle) {
+	VkImageCreateInfo textureImageCreateInfo{
+		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+		.imageType = VK_IMAGE_TYPE_2D,
+		.format = handle.imageFormat,
+		.extent{
+			.width = static_cast<uint32_t>( handle.width ),
+			.height = static_cast<uint32_t>( handle.height ),
+			.depth = 1
+		},
+		.mipLevels = 1,
+		.arrayLayers = 1,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.tiling = VK_IMAGE_TILING_OPTIMAL,
+		.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
+	};
+
+	VmaAllocationCreateInfo textureImageAllocationCreateInfo{
+		.usage = VMA_MEMORY_USAGE_AUTO
+	};
+
+	//add validation later
+	vmaCreateImage( allocator, &textureImageCreateInfo, &textureImageAllocationCreateInfo, &handle.image, &handle.allocation, nullptr);
+
+	VkImageViewCreateInfo textureImageViewCreateInfo{
+		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+		.image = handle.image,
+		.viewType = VK_IMAGE_VIEW_TYPE_2D,
+		.format = handle.imageFormat,
+		.subresourceRange = {
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.levelCount = 1,
+			.layerCount = 1
+		}
+	};
+
+	vkCreateImageView(device, &textureImageViewCreateInfo, nullptr, &handle.imageView);
+
+	handle.descriptor = {
+		.sampler = VK_NULL_HANDLE,
+		.imageView = handle.imageView,
+		.imageLayout = VK_IMAGE_LAYOUT_GENERAL
+	};
 }

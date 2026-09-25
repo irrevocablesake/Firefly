@@ -303,89 +303,6 @@ void Renderer::createComputePipeline( VkPipeline& pipeline, VkPipelineShaderStag
 	vkCreateComputePipelines( windowIF.getLogicalDeviceIF().handle, nullptr, 1, &pipelineCI, nullptr, &pipeline );
 }
 
-Renderer::FieldState Renderer::generateField(VkFormat imageFormat, VkFilter filtering) {
-
-	FieldState fieldState{};
-
-	VkImageCreateInfo textureImageCreateInfo{
-		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-		.imageType = VK_IMAGE_TYPE_2D,
-		.format = imageFormat,
-		.extent{
-			.width = static_cast< uint32_t >( windowIF.getWindowConfiguration().windowSize.x ),
-			.height = static_cast< uint32_t >(windowIF.getWindowConfiguration().windowSize.y ),
-			.depth = 1
-		},
-		.mipLevels = 1,
-		.arrayLayers = 1,
-		.samples = VK_SAMPLE_COUNT_1_BIT,
-		.tiling = VK_IMAGE_TILING_OPTIMAL,
-		.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
-		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
-	};
-
-	VmaAllocationCreateInfo textureImageAllocationCreateInfo{
-		.usage = VMA_MEMORY_USAGE_AUTO
-	};
-	validationIF.validateResult(vmaCreateImage( windowIF.getInstanceIF().allocator, &textureImageCreateInfo, &textureImageAllocationCreateInfo, &fieldState.image, &fieldState.allocation, nullptr));
-	
-	VkFenceCreateInfo fenceOneTimeCreateInfo{
-			.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO
-	};
-	VkFence fenceOneTime;
-	validationIF.validateResult(vkCreateFence( windowIF.getLogicalDeviceIF().handle, &fenceOneTimeCreateInfo, nullptr, &fenceOneTime));
-
-	VkCommandBuffer commandBufferOneTime;
-	VkCommandBufferAllocateInfo commandBufferOneTimeAllocationInfo{
-		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-		.commandPool = windowIF.getInstanceIF().commandPool,
-		.commandBufferCount = 1
-	};
-
-	validationIF.validateResult(vkAllocateCommandBuffers( windowIF.getLogicalDeviceIF().handle, &commandBufferOneTimeAllocationInfo, &commandBufferOneTime));
-
-	VkCommandBufferBeginInfo commandBufferOneTimeBeginInfo{
-		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
-	};
-	validationIF.validateResult(vkBeginCommandBuffer(commandBufferOneTime, &commandBufferOneTimeBeginInfo));
-
-	barrier.transitionImageFromUndefinedToGeneral( commandBufferOneTime, fieldState.image );
-	
-	validationIF.validateResult(vkEndCommandBuffer(commandBufferOneTime));
-
-	VkSubmitInfo oneTimeSubmitInfo{
-		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-		.commandBufferCount = 1,
-		.pCommandBuffers = &commandBufferOneTime
-	};
-
-	validationIF.validateResult(vkQueueSubmit(windowIF.getQueue().handle, 1, &oneTimeSubmitInfo, fenceOneTime));
-	validationIF.validateResult(vkWaitForFences(windowIF.getLogicalDeviceIF().handle, 1, &fenceOneTime, VK_TRUE, UINT64_MAX));
-	
-	VkImageViewCreateInfo textureImageViewCreateInfo{
-		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-		.image = fieldState.image,
-		.viewType = VK_IMAGE_VIEW_TYPE_2D,
-		.format = imageFormat,
-		.subresourceRange = {
-			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-			.levelCount = 1,
-			.layerCount = 1
-		}
-	};
-
-	validationIF.validateResult(vkCreateImageView( windowIF.getLogicalDeviceIF().handle, &textureImageViewCreateInfo, nullptr, &fieldState.imageView));
-
-	fieldState.descriptor = {
-		.sampler = VK_NULL_HANDLE,
-		.imageView = fieldState.imageView,
-		.imageLayout = VK_IMAGE_LAYOUT_GENERAL
-	};
-
-	return fieldState;
-}
-
 void Renderer::setupDescriptorSet() {
 	VkDescriptorPoolSize poolSize{
 			.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
@@ -427,7 +344,15 @@ void Renderer::setupDescriptorSet() {
 }
 
 void Renderer::updateDescriptors() {
-		 rayTracedFrame = generateField(VK_FORMAT_R8G8B8A8_UNORM, VK_FILTER_LINEAR);
+		rayTracedFrame.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
+		rayTracedFrame.imageFilter = VK_FILTER_LINEAR;
+		rayTracedFrame.width = windowIF.getWindowConfiguration().windowSize.x;
+		rayTracedFrame.height = windowIF.getWindowConfiguration().windowSize.y;
+		resourceManager.generateTexture( windowIF.getLogicalDeviceIF().handle, windowIF.getInstanceIF().allocator, windowIF.getInstanceIF().commandPool, rayTracedFrame );
+
+		VkCommandBuffer commandBuffer = barrier.beginOneTimeCommand(windowIF.getLogicalDeviceIF().handle, windowIF.getInstanceIF().commandPool);
+		barrier.transitionImageFromUndefinedToGeneral( commandBuffer, rayTracedFrame.image);
+		barrier.endOneTimeCommand(windowIF.getLogicalDeviceIF().handle, commandBuffer, windowIF.getQueue().handle);
 
 		VkWriteDescriptorSet imageSet = {
 			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,

@@ -154,10 +154,6 @@ class Renderer {
 			return instanceIF.deviceIF.physicalIF;
 		}
 
-		auto& getUniformData() {
-			return uniformData;
-		}
-
 		auto& getLogicalDeviceIF() {
 			return instanceIF.deviceIF.logicalIF;
 		}
@@ -231,15 +227,6 @@ class Renderer {
 		VkDeviceAddress uniformBufferBDA;
 	} pushConstants;
 
-	struct FieldState {
-		VkImage image;
-		VkImageView imageView;
-		VmaAllocation allocation;
-		VkSampler sampler;
-
-		VkDescriptorImageInfo descriptor;
-	};
-
 	VkDescriptorPool descriptorPool;
 	VkDescriptorSetLayout descriptorSetLayout;
 	VkDescriptorSet descriptorSet;
@@ -278,14 +265,11 @@ class Renderer {
 	void setup();
 	void setupData();
 
-	FieldState generateField(VkFormat imageFormat, VkFilter filtering);
-	FieldState rayTracedFrame;
+	ResourceManager::TextureHandle rayTracedFrame;
 
 	Barriers barrier;
 	Shaders shaderIF;
 	ResourceManager resourceManager;
-
-	ResourceManager::BufferHandle uniformData;
 	
 	public:
 		void simulate();
