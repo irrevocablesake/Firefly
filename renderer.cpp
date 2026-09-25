@@ -386,32 +386,6 @@ void Renderer::TransitionBarriers::transitionImageFromUndefinedToGeneral(VkComma
 	vkCmdPipelineBarrier2(commandBuffer, &barrierDependencyInfo);
 }
 
-void Renderer::TransitionBarriers::transitionImageFromUndefinedToRead(VkCommandBuffer& commandBuffer, VkImage& image) {
-	VkImageMemoryBarrier2 barrierLayoutTransition{
-			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-			.srcStageMask = VK_PIPELINE_STAGE_2_NONE,
-			.srcAccessMask = VK_ACCESS_2_NONE,
-			.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-			.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
-			.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-			.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			.image = image,
-			.subresourceRange = {
-				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-				.levelCount = 1,
-				.layerCount = 1
-			}
-	};
-
-	VkDependencyInfo barrierDependencyInfo{
-		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-		.imageMemoryBarrierCount = 1,
-		.pImageMemoryBarriers = &barrierLayoutTransition
-	};
-
-	vkCmdPipelineBarrier2(commandBuffer, &barrierDependencyInfo);
-}
-
 void Renderer::TransitionBarriers::transitionImageFromGeneralToTransferSrc(VkCommandBuffer& commandBuffer, VkImage& image) {
 	VkImageMemoryBarrier2 computeToTransfer{
 	.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -632,35 +606,6 @@ void Renderer::setupPipeline() {
 	createComputePipeline(windowIF.getRayTracerPipeline().pipeline, rayTracerShaderStage, windowIF.getRayTracerPipeline().pipelineLayout);
 }
 
-Renderer::RenderingAttachment Renderer::setRenderingAttachment(VkImageView& imageView) {
-	RenderingAttachment attachment{};
-	attachment.attachmentInfo = {
-		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-		.imageView = imageView,
-		.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
-		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-		.clearValue{
-			windowIF.getWindowConfiguration().clearColor
-		}
-	};
-
-	attachment.renderingInfo = {
-		.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-		.renderArea{
-			.extent{
-				.width = static_cast<uint32_t>(windowIF.getWindowConfiguration().windowSize.x),
-				.height = static_cast<uint32_t>(windowIF.getWindowConfiguration().windowSize.y)
-			},
-		},
-		.layerCount = 1,
-		.colorAttachmentCount = 1,
-		.pColorAttachments = &attachment.attachmentInfo
-	};
-
-	return attachment;
-}
-
 void Renderer::animate() {
 	bool quit{ false };
 	uint64_t startFrameTime = SDL_GetPerformanceCounter();
@@ -724,30 +669,7 @@ void Renderer::animate() {
 		vkCmdDispatch(commandBuffer, ( windowIF.getSurfaceIF().surfaceCapabilites.currentExtent.width + 7) / 8, (windowIF.getSurfaceIF().surfaceCapabilites.currentExtent.height + 7) / 8, 1);
 
 		transitionBarriersIF.transitionImageFromGeneralToTransferSrc( commandBuffer, rayTracedFrame.image );
-
-		VkImageMemoryBarrier2 swapchainBarrier{
-			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-			.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
-			.srcAccessMask = VK_ACCESS_2_NONE,
-			.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
-			.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-			.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-			.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			.image = windowIF.getSwapchain().images[ windowIF.getImageIndex() ],
-			.subresourceRange{
-				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-				.levelCount = 1,
-				.layerCount = 1
-			}
-		};
-
-		VkDependencyInfo swapchainDependency{
-			.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-			.imageMemoryBarrierCount = 1,
-			.pImageMemoryBarriers = &swapchainBarrier
-		};
-
-		vkCmdPipelineBarrier2(commandBuffer, &swapchainDependency);
+		transitionBarriersIF.transitionImageFromUndefinedToTransferDst(commandBuffer, windowIF.getSwapchain().images[ windowIF.getImageIndex()]);
 
 		VkImageCopy copyRegion{
 			.srcSubresource{
@@ -775,15 +697,8 @@ void Renderer::animate() {
 			&copyRegion
 		);
 
-		transitionBarriersIF.transitionImageTransferDstToPresent(
-			commandBuffer,
-			windowIF.getSwapchain().images[windowIF.getImageIndex()]
-		);
-
-		transitionBarriersIF.transitionImageFromTransferSrcToGeneral(
-			commandBuffer,
-			rayTracedFrame.image
-		);
+		transitionBarriersIF.transitionImageTransferDstToPresent( commandBuffer, windowIF.getSwapchain().images[windowIF.getImageIndex()] );
+		transitionBarriersIF.transitionImageFromTransferSrcToGeneral( commandBuffer, rayTracedFrame.image );
 
 		vkEndCommandBuffer(commandBuffer);
 
@@ -849,6 +764,32 @@ void Renderer::TransitionBarriers::transitionImageTransferDstToPresent(
 	vkCmdPipelineBarrier2(commandBuffer, &dependency);
 }
 
+void Renderer::TransitionBarriers::transitionImageFromUndefinedToTransferDst(VkCommandBuffer& commandBuffer, VkImage& image) {
+	VkImageMemoryBarrier2 barrier{
+	.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+	.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+	.srcAccessMask = VK_ACCESS_2_NONE,
+	.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+	.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+	.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+	.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+	.image = image,
+	.subresourceRange{
+		.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+		.levelCount = 1,
+		.layerCount = 1
+	}
+	};
+
+	VkDependencyInfo dependency{
+		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+		.imageMemoryBarrierCount = 1,
+		.pImageMemoryBarriers = &barrier
+	};
+
+	vkCmdPipelineBarrier2(commandBuffer, &dependency);
+}
+
 void Renderer::recreateSwapchain() {
 	windowIF.getSwapchain().updateSwapchain = false;
 	vkDeviceWaitIdle(windowIF.getLogicalDeviceIF().handle);
@@ -874,81 +815,6 @@ void Renderer::recreateSwapchain() {
 		validationIF.validateResult(vkCreateImageView(windowIF.getLogicalDeviceIF().handle, &viewCI, nullptr, &windowIF.getSwapchain().imageViews[i]), "Failed To Create Image View");
 	}
 	vkDestroySwapchainKHR(windowIF.getLogicalDeviceIF().handle, windowIF.getSwapchain().swapchainCI.oldSwapchain, nullptr);
-}
-
-void Renderer::TransitionBarriers::transitionImageUndefinedToAttachment(VkCommandBuffer& commandBuffer, VkImage& image) {
-	VkImageMemoryBarrier2 outputBarrier{
-		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-		.srcAccessMask = 0,
-		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-		.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-		.newLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
-		.image = image,
-		.subresourceRange {
-			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-			.levelCount = 1,
-			.layerCount = 1
-		}
-	};
-
-	VkDependencyInfo barrierDependencyInfo{
-		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-		.imageMemoryBarrierCount = 1,
-		.pImageMemoryBarriers = &outputBarrier
-	};
-
-	vkCmdPipelineBarrier2(commandBuffer, &barrierDependencyInfo);
-}
-
-void Renderer::TransitionBarriers::transitionImageAttachmentToPresent(VkCommandBuffer& commandBuffer, VkImage& image) {
-	VkImageMemoryBarrier2 barrierPresent{
-		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-		.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-		.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-		.dstAccessMask = 0,
-		.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-		.image = image,
-		.subresourceRange{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .levelCount = 1, .layerCount = 1 }
-	};
-	VkDependencyInfo barrierPresentDependencyInfo{
-		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-		.imageMemoryBarrierCount = 1,
-		.pImageMemoryBarriers = &barrierPresent
-	};
-	vkCmdPipelineBarrier2(commandBuffer, &barrierPresentDependencyInfo);
-}
-
-void Renderer::TransitionBarriers::transitionImageUndefinedToGeneral(
-	VkCommandBuffer& commandBuffer,
-	VkImage& image)
-{
-	VkImageMemoryBarrier2 barrier{
-		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-		.srcStageMask = VK_PIPELINE_STAGE_2_NONE,
-		.srcAccessMask = VK_ACCESS_2_NONE,
-		.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-		.dstAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT,
-		.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-		.newLayout = VK_IMAGE_LAYOUT_GENERAL,
-		.image = image,
-		.subresourceRange{
-			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-			.levelCount = 1,
-			.layerCount = 1
-		}
-	};
-
-	VkDependencyInfo dependency{
-		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-		.imageMemoryBarrierCount = 1,
-		.pImageMemoryBarriers = &barrier
-	};
-
-	vkCmdPipelineBarrier2(commandBuffer, &dependency);
 }
 
 void Renderer::simulate() {

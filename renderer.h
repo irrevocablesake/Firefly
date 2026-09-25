@@ -252,15 +252,11 @@ class Renderer {
 	} validationIF;
 
 	struct TransitionBarriers {
-		void transitionImageUndefinedToAttachment(VkCommandBuffer &commandBuffer, VkImage &image );
-		void transitionImageUndefinedToGeneral(VkCommandBuffer& commandBuffer, VkImage& image);
-		void transitionImageAttachmentToPresent(VkCommandBuffer &commandBuffer, VkImage &image );
-		void transitionImageFromUndefinedToRead(VkCommandBuffer& commandBuffer, VkImage& image);
-		void transitionImageTransferDstToPresent(VkCommandBuffer& commandBuffer, VkImage& image);
-
 		void transitionImageFromUndefinedToGeneral(VkCommandBuffer& commandBuffer, VkImage& image);
 		void transitionImageFromGeneralToTransferSrc(VkCommandBuffer& commandBuffer, VkImage& image);
 		void transitionImageFromTransferSrcToGeneral(VkCommandBuffer& commandBuffer, VkImage& image);
+		void transitionImageTransferDstToPresent(VkCommandBuffer& commandBuffer, VkImage& image);
+		void transitionImageFromUndefinedToTransferDst(VkCommandBuffer& commandBuffer, VkImage& image);
 	} transitionBarriersIF;
 
 	struct FieldState {
