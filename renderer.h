@@ -14,14 +14,11 @@
 
 #include "barriers.h"
 #include "shaders.h"
+#include "resourceManager.h"
 
 using namespace std;
 
 class Renderer {
-	struct PushConstants {
-		VkDeviceAddress uniformBufferBDA;
-	} pushConstants;
-
 	struct WindowIF {
 		VkApplicationInfo applicationInfo{
 			.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -137,27 +134,13 @@ class Renderer {
 			} graphicsPipeline, rayTracerPipeline;
 		} instanceIF;
 
-		struct UniformData {
-			float aspectRatio = 1.0;
-		} uniformData;
-
-		struct UniformDataHandle {
-			VkBuffer buffer{ VK_NULL_HANDLE };
-
-			VmaAllocation allocation{ VK_NULL_HANDLE };
-			VmaAllocationInfo allocationInfo{};
-
-			VkDeviceAddress deviceAddress{};
-			void* mapped{ nullptr };
-		} uniformDataHandle;
-
 		struct FramesConfiguration {
 			static constexpr uint32_t maxFramesInFlight{ 2 };
 
 			array< VkFence, maxFramesInFlight > fences;
 			array< VkSemaphore, maxFramesInFlight > presentSemaphores;
 			array< VkCommandBuffer, maxFramesInFlight > commandBuffers{};
-			array< UniformDataHandle, maxFramesInFlight > uniformData;
+			array< ResourceManager::BufferHandle, maxFramesInFlight > uniformData;
 
 			int frameIndex{ 0 };
 		} framesIF;
@@ -240,6 +223,14 @@ class Renderer {
 		}
 	} windowIF;
 
+	struct UniformData {
+		float aspectRatio = 1.0;
+	} uniformData;
+
+	struct PushConstants {
+		VkDeviceAddress uniformBufferBDA;
+	} pushConstants;
+
 	struct FieldState {
 		VkImage image;
 		VkImageView imageView;
@@ -285,12 +276,16 @@ class Renderer {
 	void animate();
 	
 	void setup();
+	void setupData();
 
 	FieldState generateField(VkFormat imageFormat, VkFilter filtering);
 	FieldState rayTracedFrame;
 
 	Barriers barrier;
 	Shaders shaderIF;
+	ResourceManager resourceManager;
+
+	ResourceManager::BufferHandle uniformData;
 	
 	public:
 		void simulate();

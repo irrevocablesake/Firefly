@@ -514,7 +514,8 @@ void Renderer::animate() {
 		};
 
 		//later update the uniform data
-		memcpy( windowIF.getFramesIF().uniformData[windowIF.getFrameIndex()].allocationInfo.pMappedData, &windowIF.uniformData, sizeof(Renderer::WindowIF::UniformData));
+		pushConstants.uniformBufferBDA = windowIF.getFramesIF().uniformData[windowIF.getFrameIndex()].deviceAddress;
+		resourceManager.copyDataIntoBuffer(windowIF.getFramesIF().uniformData[ windowIF.getFrameIndex() ].allocationInfo.pMappedData, &uniformData, windowIF.getFramesIF().uniformData[windowIF.getFrameIndex()].size);
 
 		validationIF.validateResult(vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo));
 
@@ -639,27 +640,12 @@ void Renderer::simulate() {
 	animate();
 }
 
-void Renderer::setupUniformBuffer() {
-	for (uint32_t index = 0; index < windowIF.getFramesIF().maxFramesInFlight; index++) {
-		VkBufferCreateInfo uniformBufferCreateInfo{
-			.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-			.size = sizeof(Renderer::WindowIF::UniformData),
-			.usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
-		};
+void Renderer::setupData() {
+	for (int i = 0; i < windowIF.getFramesIF().maxFramesInFlight; i++) {
+		windowIF.getFramesIF().uniformData[i].size = sizeof( UniformData );
 
-		VmaAllocationCreateInfo uniformBufferAllocationCreateInfo{
-			.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
-			.usage = VMA_MEMORY_USAGE_AUTO
-		};
-
-		validationIF.validateResult(vmaCreateBuffer( windowIF.getInstanceIF().allocator, &uniformBufferCreateInfo, &uniformBufferAllocationCreateInfo, &windowIF.getFramesIF().uniformData[ index ].buffer, &windowIF.getFramesIF().uniformData[index].allocation, &windowIF.getFramesIF().uniformData[index].allocationInfo));
-
-		VkBufferDeviceAddressInfo uniformBDAInfo{
-			.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-			.buffer = windowIF.getFramesIF().uniformData[index].buffer
-		};
-
-		windowIF.getFramesIF().uniformData[index].deviceAddress = vkGetBufferDeviceAddress(windowIF.getLogicalDeviceIF().handle, &uniformBDAInfo);
+		resourceManager.setupBuffer(windowIF.getLogicalDeviceIF().handle, windowIF.getInstanceIF().allocator, windowIF.getFramesIF().uniformData[i] );
+		resourceManager.copyDataIntoBuffer(windowIF.getFramesIF().uniformData[i].allocationInfo.pMappedData, &uniformData, windowIF.getFramesIF().uniformData[i].size );
 	}
 }
 
@@ -676,5 +662,5 @@ void Renderer::setup() {
 	setupCommandBuffers();
 	shaderIF.setupSLANG();
 	setupPipeline();
-	setupUniformBuffer();
+	setupData();
 }
