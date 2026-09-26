@@ -9,8 +9,14 @@
 
 #include "barriers.h"
 
+#include "VulkanContext.h"
+
+#include<map>
+#include<vector>
+
 class ResourceManager {
 	Barriers barrier;
+	VulkanContext* vulkanContext;
 
 	public:
 		struct BufferHandle {
@@ -41,9 +47,19 @@ class ResourceManager {
 			uint32_t height;
 		};
 
+		VkDescriptorPool descriptorPool;
+
 	public:
-		void setupBuffer( VkDevice& device, VmaAllocator& allocator, BufferHandle& handle );
+		void setupBuffer( BufferHandle& handle );
 		void copyDataIntoBuffer( void* destination, const void* source, size_t size );
 
-		void generateTexture(VkDevice& device, VmaAllocator& allocator, VkCommandPool& commandPool, TextureHandle& handle );
+		void generateTexture(TextureHandle& handle );
+
+		void setup( VulkanContext& vulkanContext_ );
+
+		void setupDescriptorPool(std::map< VkDescriptorType, uint32_t > info);
+		VkDescriptorSetLayout createDescriptorSetLayout(std::vector<VkDescriptorSetLayoutBinding> layout);
+		std::vector< VkDescriptorSet >  allocateDescriptorSets(std::vector< VkDescriptorSetLayout > layouts);
+		void updateDescriptorSet(std::vector< VkWriteDescriptorSet > descriptorSets);
+
 };
