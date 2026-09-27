@@ -1,5 +1,7 @@
 #include "engine.h"
 
+#include<iostream>
+
 class Firefly {
 	Engine engine;
 	Engine::TextureHandle RenderTargetTexture;
@@ -15,8 +17,36 @@ class Firefly {
 	VkDescriptorSetLayout RenderTargetDescriptorSetLayout;
 
 	struct UniformData {
+		glm::vec3 cameraPosition;
+		float pad0;
+
+		glm::vec3 viewportU;
+		float pad1;
+
+		glm::vec3 viewportV;
+		float pad2;
+
+		glm::vec3 pixelDeltaU;
+		float pad3;
+
+		glm::vec3 pixelDeltaV;
+		float pad4;
+
+		glm::vec3 viewportUPL;
+		float pad5;
+
+		glm::vec3 pixel00Location;
+		float pad6;
+
 		float imageWidth;
 		float imageHeight;
+
+		float aspectRatio;
+
+		float viewportWidth;
+		float viewportHeight;
+
+		float focalLength;
 	} uniformData;
 
 	void generateRenderTarget() {
@@ -82,6 +112,22 @@ class Firefly {
 		} };
 
 		engine.resourceManager.updateDescriptorSet(bufferUpdate);
+
+		uniformData.imageWidth = engine.windowManager.windowSize.x;
+		uniformData.imageHeight = engine.windowManager.windowSize.y;
+		uniformData.aspectRatio = ( ( float ) uniformData.imageWidth / uniformData.imageHeight );
+		uniformData.focalLength = 1.0;
+		uniformData.viewportHeight = 2.0;
+		uniformData.viewportWidth = uniformData.viewportHeight * uniformData.aspectRatio;
+		uniformData.cameraPosition = glm::vec3(0, 0, 0);
+		uniformData.viewportU = glm::vec3( uniformData.viewportWidth, 0, 0 );
+		uniformData.viewportV = glm::vec3( 0, -uniformData.viewportHeight, 0 );
+		uniformData.pixelDeltaU = uniformData.viewportU / uniformData.imageWidth;
+		uniformData.pixelDeltaV = uniformData.viewportV / uniformData.imageHeight;
+		uniformData.viewportUPL = uniformData.cameraPosition - glm::vec3(0, 0, uniformData.focalLength) - ( uniformData.viewportU / 2.0f ) - ( uniformData.viewportV / 2.0f );
+		uniformData.pixel00Location = uniformData.viewportUPL + 0.5f * ( uniformData.pixelDeltaU + uniformData.pixelDeltaV );
+
+		memcpy(UBHandle.allocationInfo.pMappedData, &uniformData, sizeof(UniformData));
 	}
 
 	void generatePipeline() {
@@ -178,8 +224,6 @@ class Firefly {
 
 			uniformData.imageWidth = engine.windowManager.windowSize.x;
 			uniformData.imageHeight = engine.windowManager.windowSize.y;
-
-			memcpy( UBHandle.allocationInfo.pMappedData, &uniformData, sizeof(UniformData));
 
 			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, RTXPipelineLayout, 0, 1, &RenderTargetDescriptorSet, 0, nullptr);
 			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, RTXPipelineLayout, 1, 1, &UBDescriptorSet, 0, nullptr);
