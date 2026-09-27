@@ -50,7 +50,7 @@ class ResourceManager {
 		VkDescriptorPool descriptorPool;
 
 	public:
-		void setupBuffer( BufferHandle& handle );
+		void setupBuffer(BufferHandle& handle, VkBufferUsageFlags flags);
 		void copyDataIntoBuffer( void* destination, const void* source, size_t size );
 
 		void generateTexture(TextureHandle& handle );
@@ -62,4 +62,5 @@ class ResourceManager {
 		std::vector< VkDescriptorSet >  allocateDescriptorSets(std::vector< VkDescriptorSetLayout > layouts);
 		void updateDescriptorSet(std::vector< VkWriteDescriptorSet > descriptorSets);
 
+		VkDescriptorSet allocateDescriptorSets(VkDescriptorSetLayout layout );
 };

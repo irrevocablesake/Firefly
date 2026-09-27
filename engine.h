@@ -19,6 +19,7 @@ public:
 	Barriers barrier;
 
 	using TextureHandle = ResourceManager::TextureHandle;
+	using BufferHandle = ResourceManager::BufferHandle;
 
 public:
 	void configure(std::string name, uint32_t API_VERSION );	

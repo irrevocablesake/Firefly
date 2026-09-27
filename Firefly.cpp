@@ -2,27 +2,33 @@
 
 class Firefly {
 	Engine engine;
-	Engine::TextureHandle rayTracedFrame;
+	Engine::TextureHandle RenderTargetTexture;
+	Engine::BufferHandle UBHandle;
 
-	VkPipelineLayout pipelineLayout;
-	VkPipeline pipeline;
-	std::vector< VkDescriptorSet > descriptorSet;
+	VkPipeline RTXPipeline;
+	VkPipelineLayout RTXPipelineLayout;
 
-	void setup() {
-		engine.configure("Firefly", VK_API_VERSION_1_4);
+	VkDescriptorSet UBDescriptorSet;
+	VkDescriptorSetLayout UBDescriptorSetLayout;
 
+	VkDescriptorSet RenderTargetDescriptorSet;
+	VkDescriptorSetLayout RenderTargetDescriptorSetLayout;
+
+	struct UniformData {
+		float imageWidth;
+		float imageHeight;
+	} uniformData;
+
+	void generateRenderTarget() {
 		//Generate Texture
-		rayTracedFrame = engine.generateTextureHandle();
-		rayTracedFrame.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
-		rayTracedFrame.imageFilter = VK_FILTER_LINEAR;
-		rayTracedFrame.width = engine.windowManager.windowSize.x;
-		rayTracedFrame.height = engine.windowManager.windowSize.y;
-		engine.generateTexture( rayTracedFrame);
+		RenderTargetTexture = engine.generateTextureHandle();
+		RenderTargetTexture.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
+		RenderTargetTexture.imageFilter = VK_FILTER_LINEAR;
+		RenderTargetTexture.width = engine.windowManager.windowSize.x;
+		RenderTargetTexture.height = engine.windowManager.windowSize.y;
+		engine.generateTexture(RenderTargetTexture);
 
-		engine.resourceManager.setupDescriptorPool({
-			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 }
-		});
-
+		//Expose Texture through Descriptor
 		VkDescriptorSetLayoutBinding binding{
 			.binding = 0,
 			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
@@ -30,34 +36,65 @@ class Firefly {
 			.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT
 		};
 
-		VkDescriptorSetLayout layout = engine.resourceManager.createDescriptorSetLayout({
-			binding
-		});
-
-		descriptorSet = engine.resourceManager.allocateDescriptorSets({
-			layout
-		});
+		RenderTargetDescriptorSetLayout = engine.resourceManager.createDescriptorSetLayout({ binding });
+		RenderTargetDescriptorSet = engine.resourceManager.allocateDescriptorSets( RenderTargetDescriptorSetLayout );
 
 		std::vector< VkWriteDescriptorSet > imageSet = { {
 			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-			.dstSet = descriptorSet[0],
+			.dstSet = RenderTargetDescriptorSet,
 			.dstBinding = 0,
 			.descriptorCount = 1,
 			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-			.pImageInfo = &rayTracedFrame.descriptor
+			.pImageInfo = &RenderTargetTexture.descriptor
 		} };
 
-		engine.resourceManager.updateDescriptorSet( imageSet );
+		engine.resourceManager.updateDescriptorSet(imageSet);
+	}
 
+	void generateUBBuffer() {
+		UBHandle.size = sizeof(UniformData);
+		engine.resourceManager.setupBuffer(UBHandle, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+
+		VkDescriptorSetLayoutBinding binding{
+			.binding = 0,
+			.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+			.descriptorCount = 1,
+			.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT
+		};
+
+		UBDescriptorSetLayout = engine.resourceManager.createDescriptorSetLayout({ binding });
+
+		UBDescriptorSet = engine.resourceManager.allocateDescriptorSets({ UBDescriptorSetLayout });
+
+		VkDescriptorBufferInfo bufferInfo{
+			.buffer = UBHandle.buffer,
+			.offset = 0,
+			.range = UBHandle.size
+		};
+
+		std::vector< VkWriteDescriptorSet > bufferUpdate = { {
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstSet = UBDescriptorSet,
+			.dstBinding = 0,
+			.descriptorCount = 1,
+			.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+			.pBufferInfo = &bufferInfo
+		} };
+
+		engine.resourceManager.updateDescriptorSet(bufferUpdate);
+	}
+
+	void generatePipeline() {
+		std::vector< VkDescriptorSetLayout > layouts = { RenderTargetDescriptorSetLayout, UBDescriptorSetLayout };
 
 		//COMPUTE PIPELINE
 		VkPipelineLayoutCreateInfo rayTracerLayoutCI{
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-			.setLayoutCount = 1,
-			.pSetLayouts = &layout,
+			.setLayoutCount = static_cast<uint32_t>(layouts.size()),
+			.pSetLayouts = layouts.data(),
 		};
 
-		vkCreatePipelineLayout(engine.vulkanContext.logicalDeviceIF.handle, &rayTracerLayoutCI, nullptr, &pipelineLayout);
+		vkCreatePipelineLayout(engine.vulkanContext.logicalDeviceIF.handle, &rayTracerLayoutCI, nullptr, &RTXPipelineLayout);
 
 		VkPipelineShaderStageCreateInfo rayTracerShaderStage{
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -66,7 +103,20 @@ class Firefly {
 			.pName = "main"
 		};
 
-		engine.pipelineManager.createComputePipeline(pipeline, rayTracerShaderStage, pipelineLayout);
+		engine.pipelineManager.createComputePipeline(RTXPipeline, rayTracerShaderStage, RTXPipelineLayout);
+	}
+
+	void setup() {
+		engine.configure("Firefly", VK_API_VERSION_1_4);
+
+		engine.resourceManager.setupDescriptorPool({
+			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 }
+		});
+
+		generateRenderTarget();
+		generateUBBuffer();
+		generatePipeline();
 	}
 
 	void animate() {
@@ -126,11 +176,17 @@ class Firefly {
 			};
 			vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSet[0], 0, nullptr);
-			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+			uniformData.imageWidth = engine.windowManager.windowSize.x;
+			uniformData.imageHeight = engine.windowManager.windowSize.y;
+
+			memcpy( UBHandle.allocationInfo.pMappedData, &uniformData, sizeof(UniformData));
+
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, RTXPipelineLayout, 0, 1, &RenderTargetDescriptorSet, 0, nullptr);
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, RTXPipelineLayout, 1, 1, &UBDescriptorSet, 0, nullptr);
+			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, RTXPipeline);
 			vkCmdDispatch(commandBuffer, ( engine.windowManager.windowSize.x + 7) / 8, (engine.windowManager.windowSize.y + 7) / 8, 1);
 
-			engine.barrier.transitionImageFromGeneralToTransferSrc(commandBuffer, rayTracedFrame.image);
+			engine.barrier.transitionImageFromGeneralToTransferSrc(commandBuffer, RenderTargetTexture.image);
 			engine.barrier.transitionImageFromUndefinedToTransferDst(commandBuffer, engine.swapchainManager.images[engine.swapchainManager.imageIndex]);
 
 			VkImageCopy copyRegion{
@@ -151,7 +207,7 @@ class Firefly {
 
 			vkCmdCopyImage(
 				commandBuffer,
-				rayTracedFrame.image,
+				RenderTargetTexture.image,
 				VK_IMAGE_LAYOUT_GENERAL,
 				engine.swapchainManager.images[ engine.swapchainManager.imageIndex ],
 				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -160,7 +216,7 @@ class Firefly {
 			);
 
 			engine.barrier.transitionImageTransferDstToPresent(commandBuffer, engine.swapchainManager.images[engine.swapchainManager.imageIndex]);
-			engine.barrier.transitionImageFromTransferSrcToGeneral(commandBuffer, rayTracedFrame.image);
+			engine.barrier.transitionImageFromTransferSrcToGeneral(commandBuffer, RenderTargetTexture.image);
 
 			vkEndCommandBuffer(commandBuffer);
 

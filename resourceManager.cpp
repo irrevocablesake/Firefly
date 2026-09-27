@@ -6,11 +6,11 @@ void ResourceManager::copyDataIntoBuffer(void* destination, const void* source, 
 	memcpy(destination, source, size);
 }
 
-void ResourceManager::setupBuffer(BufferHandle& handle) {
+void ResourceManager::setupBuffer(BufferHandle& handle, VkBufferUsageFlags flags ) {
 	VkBufferCreateInfo uniformBufferCreateInfo{
 		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
 		.size = handle.size,
-		.usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
+		.usage = flags | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
 	};
 
 	VmaAllocationCreateInfo uniformBufferAllocationCreateInfo{
@@ -131,6 +131,21 @@ std::vector< VkDescriptorSet > ResourceManager::allocateDescriptorSets(std::vect
 	};
 
 	vkAllocateDescriptorSets(vulkanContext->logicalDeviceIF.handle, &descriptorAllocateInfo, descriptorSet.data());
+
+	return descriptorSet;
+}
+
+VkDescriptorSet ResourceManager::allocateDescriptorSets( VkDescriptorSetLayout layout ){
+	VkDescriptorSet descriptorSet;
+
+	VkDescriptorSetAllocateInfo descriptorAllocateInfo{
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+		.descriptorPool = descriptorPool,
+		.descriptorSetCount = 1,
+		.pSetLayouts = &layout
+	};
+
+	vkAllocateDescriptorSets(vulkanContext->logicalDeviceIF.handle, &descriptorAllocateInfo, &descriptorSet );
 
 	return descriptorSet;
 }
