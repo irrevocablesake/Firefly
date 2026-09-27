@@ -5,16 +5,16 @@ FireFly, the insect that glows in the night - illuminating it's surroundings, ju
 
 ## To-do List:
 This list stands as a rough guideline to ensure that we do not stray away from our goals:
-- <input type="checkbox" disabled> OptiX Foundation
-- <input type="checkbox" disabled> Brute Force PathTracer 
-- <input type="checkbox" disabled> Material System
-    - <input type="checkbox" disabled> BSDF
-        - <input type="checkbox" disabled> BRDF
-        - <input type="checkbox" disabled> BTDF
-    - <input type="checkbox" disabled> BSSDF
-- <input type="checkbox" disabled> Medium Traversal
-- <input type="checkbox" disabled> Direct Lighting / NEE
-- <input type="checkbox" disabled> MIS
+- ⬜ OptiX Foundation
+- ⬜ Brute Force PathTracer 
+- ⬜ Material System
+    - ⬜ BSDF
+        - ⬜ BRDF
+        - ⬜ BTDF
+    - ⬜ BSSDF
+- ⬜ Medium Traversal
+- ⬜ Direct Lighting / NEE
+- ⬜ MIS
 
 ## Author's Note:
 
