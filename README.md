@@ -13,6 +13,7 @@ This list stands as a rough guideline to ensure that we do not stray away from o
 - ⬜ Medium Traversal
 - ⬜ Direct Lighting / NEE
 - ⬜ MIS
+- ⬜ Automate Property Sheet & Injection of Build / Target of CUDA
 
 ## Author's Note:
 
