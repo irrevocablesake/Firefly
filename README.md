@@ -1,6 +1,4 @@
 # Firefly
-Compute Shader Based Ray Tracing Engine
-
 FireFly, the insect that glows in the night - illuminating it's surroundings, just like the rays in this simulation elucidate a scene, stands as an inspiration for the name of this project. 
 
 ## To-do List:
